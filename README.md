@@ -18,17 +18,60 @@ The models can be trained with the following command:
 ```
 python3 monodepth2/train.py --data_path nyu_data --width 288 --height 224 --max_depth 10 --dataset nyu  
 ```
-To train the log-likelihood maximization model use the additional option `--uncert`- To train the MC Dropout model use the additional option `--dropout`.
+To train the log-likelihood maximization model use the additional option `--uncert`. To train the MC Dropout model use the additional option `--dropout`.
 
 
 ## Run Code 
-TODO
+We conduct our experiments on [KITTI](http://www.cvlibs.net/datasets/kitti/raw_data.php) (self-supervised) and [NYU Depth V2](https://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html) (supervised) data. 
 
-### Evaluation Supervised 
+As explained in our paper, we apply our training-free uncertainty estimation method to already trained models. Therefore, we have different base models and compare the uncertainty estimation approaches on the base models.
 
-### Evaluation Self-supervised 
+### Evaluation Self-Supervised
+In the self-supervised case, we have the base models MC Dropout (Drop), Bootstrapped Ensembles (Boot), Post-Processing (Post), Log-likelihood Maximization (Log) and Self-Teaching (Self).
+We compare the post hoc uncertainty estimation approaches on *Post*, *Log* and *Self*. As post hoc uncertainty estimation approaches we consider the variance over different test-time augmentations (Var), inference-only dropout (In-Drop) and our approach.
+
+For the evaluation of the Drop model and the Boot model as well as the Log and the Self base models you can refer to [mono-uncertainty](https://github.com/mattpoggi/mono-uncertainty).
+
+For the evaluation of our method on the Post base model run: 
+```
+python3 generate_maps.py --data_path kitti_data --load_weights_folder weights/S/Monodepth2-Post/models/weights_19/ --eval_split eigen_benchmark --eval_stereo --output_dir experiments/S/post_model/Grad --grad
+python3 evaluate.py --ext_disp_to_eval experiments/S/post_model/Grad/raw/ --eval_stereo --max_depth 80 --eval_split eigen_benchmark --eval_uncert --output_dir experiments/S/post_model/Grad --grad
+```
+
+For the evaluation of our method on the Log base model run: 
+```
+python3 generate_maps.py --data_path kitti_data --load_weights_folder weights/S/Monodepth2-Log/models/weights_19/ --eval_split eigen_benchmark --eval_stereo --output_dir experiments/S/log_model/Grad --uncert --grad --w 2.0 
+python3 evaluate.py --ext_disp_to_eval experiments/S/log_model/Grad/raw/ --eval_stereo --max_depth 80 --eval_split eigen_benchmark --eval_uncert --output_dir experiments/S/log_model/Grad --grad --uncert --w 2.0
+```
+
+For the evaluation of our method on the Self base model run: 
+```
+python3 generate_maps.py --data_path kitti_data --load_weights_folder weights/S/Monodepth2-Self/models/weights_19/ --eval_split eigen_benchmark --eval_stereo --output_dir experiments/S/self_model/Grad --uncert --grad --w 2.0 
+python3 evaluate.py --ext_disp_to_eval experiments/S/self_model/Grad/raw/ --eval_stereo --max_depth 80 --eval_split eigen_benchmark --eval_uncert --output_dir experiments/S/self_model/Grad --grad --uncert --w 2.0
+```
+
+To change the decoder layer for the gradient extraction use the argument `--ext_layer` with values between `0` and `10`.
+
+To change the augmentation for the generation of the reference depth use the argument `--gref` with one of the values: `flip`, `gray` , `noise` or `rot`. 
+
+For teh evaluation of the models trained with monocular supervision replace the folder `S` with `M` and the argument `--eval_stereo` with `--eval_mono`. 
+
+### Evaluation Supervised
+In the supervised case, we have the base models MC Dropout (Drop), Post-Processing (Post) and Log-likelihood Maximization (Log).
+We compare the post hoc uncertainty estimation approaches on *Post* and *Log*. As post hoc uncertainty estimation approaches we consider the variance over different test-time augmentations (Var), inference-only dropout (In-Drop) and our approach.
+
+For the evaluation of our method on the Post base model run: 
+```
+python3 evaluate_supervised.py --max_depth 10 --load_weights_folder weights/NYU/Monodepth2/weights/ --data_path nyu_data --eval_uncert --output_dir experiments/NYU/post_model/Grad/ --grad 
+```
+
+For the evaluation of our method on the Log base model run: 
+```
+python3 evaluate_supervised.py --max_depth 10 --load_weights_folder weights/NYU/Monodepth2-Log/weights/ --data_path nyu_data --eval_uncert --output_dir experiments/NYU/log_model/Grad/ --grad --uncert -w 2.0 
+```
 
 ## Reference
+TODO
 
 ## Acknowledgement
 We used and modified code parts from the open source projects [monodepth2](https://github.com/nianticlabs/monodepth2) and [mono-uncertainty](https://github.com/mattpoggi/mono-uncertainty). We like to thank the authors for making their code publicly available. 
