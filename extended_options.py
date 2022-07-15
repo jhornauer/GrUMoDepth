@@ -67,7 +67,7 @@ class UncertaintyOptions(MonodepthOptions):
         self.parser.add_argument("--gref", type=str,
                                  help="reference image for gradient calculation: no grad reference [none]"
                                       "flipped image [flip], grayscale [gray], additive Gaussian noise [noise], "
-                                      "ground truth (only for nyu) [gt], rotation [rot]")
+                                      "ground truth (only for nyu) [gt], rotation [rot]", default='flip')
         self.parser.add_argument("--angle", help="angle in degree if rotation is used as reference", type=int,
                                  default=10)
         self.parser.add_argument("--var_aug", help="use variance over multiple augmentations", action="store_true")
