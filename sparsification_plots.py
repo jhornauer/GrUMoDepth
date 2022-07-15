@@ -18,8 +18,8 @@ if __name__ == '__main__':
 
     if args.setup == "kitti-m":
         root_dir = 'experiments/M/'
-        models = ['post_model/Post', 'post_model/Infer-Drop', 'post_model/Grad', 'log_model/Log',
-                  'log_model/Infer-Drop', 'log_model/Grad', 'self_model/Self', 'self_model/Infer-Drop',
+        models = ['post_model/Post', 'post_model/In-Drop', 'post_model/Grad', 'log_model/Log',
+                  'log_model/In-Drop', 'log_model/Grad', 'self_model/Self', 'self_model/In-Drop',
                   'self_model/Grad', 'drop_model/Drop', 'boot_model/Boot']
         legend = ['post-Base', 'post-In-Drop', 'post-Grad', 'log-Base', 'log-In-Drop', 'log-Grad', 'self-Base',
                   'self-In-Drop', 'self-Grad', 'Drop', 'Boot']
@@ -28,8 +28,8 @@ if __name__ == '__main__':
         marksers = ['--', ':', '-', '--', ':', '-', '--', ':', '-', '--', '--']
     elif args.setup == "kitti-s":
         root_dir = 'experiments/S/'
-        models = ['post_model/Post', 'post_model/Infer-Drop', 'post_model/Grad', 'log_model/Log',
-                  'log_model/Infer-Drop', 'log_model/Grad', 'self_model/Self', 'self_model/Infer-Drop',
+        models = ['post_model/Post', 'post_model/In-Drop', 'post_model/Grad', 'log_model/Log',
+                  'log_model/In-Drop', 'log_model/Grad', 'self_model/Self', 'self_model/In-Drop',
                   'self_model/Grad', 'drop_model/Drop', 'boot_model/Boot']
         legend = ['post-Base', 'post-In-Drop', 'post-Grad', 'log-Base', 'log-In-Drop', 'log-Grad', 'self-Base',
                   'self-In-Drop', 'self-Grad', 'Drop', 'Boot']
@@ -38,8 +38,8 @@ if __name__ == '__main__':
         marksers = ['--', ':', '-', '--', ':', '-', '--', ':', '-', '--', '--']
     elif args.setup == 'nyu':
         root_dir = 'experiments/NYU'
-        models = ['post_model/Post', 'post_model/Infer-Drop', 'post_model/Grad', 'log_model/Log',
-                  'log_model/Infer-Drop', 'log_model/Grad', 'drop_model/Drop']
+        models = ['post_model/Post', 'post_model/In-Drop', 'post_model/Grad', 'log_model/Log',
+                  'log_model/In-Drop', 'log_model/Grad', 'drop_model/Drop']
         legend = ['post-Base', 'post-In-Drop', 'post-Grad', 'log-Base', 'log-In-Drop', 'log-Grad', 'Drop']
         colors = ['tab:blue', 'tab:blue', 'tab:blue', 'tab:orange', 'tab:orange', 'tab:orange', 'tab:red']
         marksers = ['--', ':', '-', '--', ':', '-', '--']
