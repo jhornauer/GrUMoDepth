@@ -252,11 +252,9 @@ def evaluate(opt):
                 loss = torch.mean(loss)
             else:
                 if opt.gloss != "none":
-                    print('Calculating L_r')
                     depth_diff = loss_fkt(pred_depth, ref_depth)
                     loss += torch.mean(depth_diff)
                 if opt.uncert and opt.w != 0.0:
-                    print('Calculating uncert loss with w {}'.format(opt.w))
                     uncert = torch.exp(pred_uncert) ** 2
                     loss += (opt.w * torch.mean(uncert))
 
