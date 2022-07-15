@@ -32,6 +32,7 @@ We compare the post hoc uncertainty estimation approaches on *Post*, *Log* and *
 
 For the evaluation of the Drop model and the Boot model as well as the Log and the Self base models you can refer to [mono-uncertainty](https://github.com/mattpoggi/mono-uncertainty).
 
+#### Evaluation of our gradient-based uncertainty estimation method:
 For the evaluation of our method on the Post base model run: 
 ```
 python3 generate_maps.py --data_path kitti_data --load_weights_folder weights/S/Monodepth2-Post/models/weights_19/ --eval_split eigen_benchmark --eval_stereo --output_dir experiments/S/post_model/Grad --grad
@@ -54,12 +55,30 @@ To change the decoder layer for the gradient extraction use the argument `--ext_
 
 To change the augmentation for the generation of the reference depth use the argument `--gref` with one of the values: `flip`, `gray` , `noise` or `rot`. 
 
-For teh evaluation of the models trained with monocular supervision replace the folder `S` with `M` and the argument `--eval_stereo` with `--eval_mono`. 
+##### Evaluation of In-Drop method: 
+For the evaluation of the In-Drop method on the Post base model run: 
+```
+python3 generate_maps.py --data_path kitti_data --load_weights_folder weights/S/Monodepth2-Post/models/weights_19/ --eval_split eigen_benchmark --eval_stereo --output_dir experiments/S/post_model/In-Drop --infer_dropout
+python3 evaluate.py --ext_disp_to_eval experiments/S/post_model/Infer-Drop/raw/ --eval_stereo --max_depth 80 --eval_split eigen_benchmark --eval_uncert --output_dir experiments/S/post_model/In-Drop --infer_dropout
+```
+
+To change the dropout probability use the argument `--infer_p` with values between `0.0` and `1.0`. Default ist `0.2`. 
+
+
+##### Evaluation of the Var method: 
+For the evaluation of the Var method on the Post base model run: 
+```
+python3 generate_maps.py --data_path kitti_data --load_weights_folder weights/S/Monodepth2-Post/models/weights_19/ --eval_split eigen_benchmark --eval_stereo --output_dir experiments/S/post_model/Var --var_aug
+python3 evaluate.py --ext_disp_to_eval experiments/S/post_model/Var/raw/ --eval_stereo --max_depth 80 --eval_split eigen_benchmark --eval_uncert --output_dir experiments/S/post_model/Var --var_aug
+```
+
+For the evaluation of the models trained with monocular supervision replace the folder `S` with `M` and the argument `--eval_stereo` with `--eval_mono`. 
 
 ### Evaluation Supervised
 In the supervised case, we have the base models MC Dropout (Drop), Post-Processing (Post) and Log-likelihood Maximization (Log).
 We compare the post hoc uncertainty estimation approaches on *Post* and *Log*. As post hoc uncertainty estimation approaches we consider the variance over different test-time augmentations (Var), inference-only dropout (In-Drop) and our approach.
 
+#### Evaluation of our gradient-based uncertainty estimation method: 
 For the evaluation of our method on the Post base model run: 
 ```
 python3 evaluate_supervised.py --max_depth 10 --load_weights_folder weights/NYU/Monodepth2/weights/ --data_path nyu_data --eval_uncert --output_dir experiments/NYU/post_model/Grad/ --grad 
@@ -68,6 +87,27 @@ python3 evaluate_supervised.py --max_depth 10 --load_weights_folder weights/NYU/
 For the evaluation of our method on the Log base model run: 
 ```
 python3 evaluate_supervised.py --max_depth 10 --load_weights_folder weights/NYU/Monodepth2-Log/weights/ --data_path nyu_data --eval_uncert --output_dir experiments/NYU/log_model/Grad/ --grad --uncert -w 2.0 
+```
+
+##### Evaluation of the Drop model: 
+For the evaluation of the Drop model run: 
+```
+python3 evaluate_supervised.py --max_depth 10 --load_weights_folder weights/NYU/Monodepth2-Drop/weights/ --data_path nyu_data --eval_uncert --output_dir experiments/NYU/drop_model/Drop/ --dropout
+```
+
+##### Evaluation of In-Drop method: 
+For the evaluation of the In-Drop method on the Post base model run: 
+```
+python3 evaluate_supervised.py --max_depth 10 --load_weights_folder weights/NYU/Monodepth2/weights/ --data_path nyu_data --eval_uncert --output_dir experiments/NYU/post_model/In-Drop/ --infer_dropout
+```
+
+To change the dropout probability use the argument `--infer_p` with values between `0.0` and `1.0`. Default ist `0.2`. 
+
+
+##### Evaluation of the Var method: 
+For the evaluation of the Var method on the Post base model run: 
+```
+python3 evaluate_supervised.py --max_depth 10 --load_weights_folder weights/NYU/Monodepth2/weights/ --data_path nyu_data --eval_uncert --output_dir experiments/NYU/post_model/Var/ --var_aug
 ```
 
 ## Reference
