@@ -78,7 +78,7 @@ class UncertaintyOptions(MonodepthOptions):
 
         self.parser.add_argument("--infer_dropout", help="if set will apply dropout only during inference",
                                  action="store_true")
-        self.parser.add_argument("--infer_p", type=float, default=0.01, help="infer dropout probability")
+        self.parser.add_argument("--infer_p", type=float, default=0.2, help="infer dropout probability")
 
         ##  additional options for supervised depth
         self.parser.add_argument("--save_depth_map", help="if set will save the detph maps", action="store_true")
