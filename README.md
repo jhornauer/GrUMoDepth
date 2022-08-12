@@ -113,7 +113,19 @@ python3 evaluate_supervised.py --max_depth 10 --load_weights_folder weights/NYU/
 ```
 
 ## Reference
-TODO
+Please use the following citations when referencing our work:
+
+**Gradient-based Uncertainty for Monocular Depth Estimation** \
+*Julia Hornauer and Vasileios Belagiannis* **[[paper]](https://arxiv.org/abs/2208.02005)**
+```
+@article{Hornauer2022GradientbasedUF,
+  title={Gradient-based Uncertainty for Monocular Depth Estimation},
+  author={Julia Hornauer and Vasileios Belagiannis},
+  journal={ArXiv},
+  year={2022},
+  volume={abs/2208.02005}
+}
+``` 
 
 ## Acknowledgement
 We used and modified code parts from the open source projects [monodepth2](https://github.com/nianticlabs/monodepth2) and [mono-uncertainty](https://github.com/mattpoggi/mono-uncertainty). We like to thank the authors for making their code publicly available. 
