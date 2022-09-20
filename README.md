@@ -2,7 +2,7 @@
 
 This repository contains the official implementation of our  ECCV 2022 paper. 
 
-![Overview](images/github_overview.jpg)
+![Overview](images/github_overview.png)
 
 ## Requirements
 We provide the `environment.yml` file with the required packages. The file ca be used to create an Anaconda environment. 
