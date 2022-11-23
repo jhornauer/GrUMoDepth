@@ -15,7 +15,7 @@ We conduct our evaluations on the datasets [NYU Depth V2](https://cs.nyu.edu/~si
 ## Pre-trained Models 
 We conduct experiments on already trained depth estimation models. The pre-trained models are trained on [KITTI](http://www.cvlibs.net/datasets/kitti/raw_data.php) with monocular and stereo supervision in a self-supervised manner and on [NYU Depth V2](https://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html) in a supervised manner.
 In case of [KITTI](http://www.cvlibs.net/datasets/kitti/raw_data.php), we rely on the already trained modes from [mono-uncertainty](https://github.com/mattpoggi/mono-uncertainty). Please follow their instructions to download the respective model weights. 
-Our models trained on [NYU Depth V2](https://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html) can be downloaded from the following link: [NYU Models](https://cloudstore.uni-ulm.de/s/7pZn39CTFyMwPBA).
+Our models trained on [NYU Depth V2](https://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html) can be downloaded from the following link: [NYU Models](https://cloudstore.uni-ulm.de/s/CbWd7odXepC53Xr).
 The models can be trained with the following command: 
 ```
 python3 monodepth2/train.py --data_path nyu_data --width 288 --height 224 --max_depth 10 --dataset nyu  
