@@ -118,12 +118,11 @@ Please use the following citations when referencing our work:
 **Gradient-based Uncertainty for Monocular Depth Estimation** \
 *Julia Hornauer and Vasileios Belagiannis* **[[paper]](https://arxiv.org/abs/2208.02005)**
 ```
-@article{Hornauer2022GradientbasedUF,
+@inproceedings{Hornauer2022GradientbasedUF,
   title={Gradient-based Uncertainty for Monocular Depth Estimation},
   author={Julia Hornauer and Vasileios Belagiannis},
-  journal={ArXiv},
-  year={2022},
-  volume={abs/2208.02005}
+  booktitle={European Conference on Computer Vision},
+  year={2022}
 }
 ``` 
 
