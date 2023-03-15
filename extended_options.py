@@ -45,7 +45,7 @@ class UncertaintyOptions(MonodepthOptions):
                                  action="store_true")
         self.parser.add_argument("--repr", help="if set, adds the Repr output to monodepth2", action="store_true")
 
-        # self.parser.add_argument("--dropout", help="if set enables dropout inference", action="store_true")
+        self.parser.add_argument("--dropout", help="if set enables dropout inference", action="store_true")
 
         self.parser.add_argument("--bootstraps", type=int, default=1,
                                  help="if > 1, loads multiple checkpoints from different trainings to build a "
@@ -57,7 +57,11 @@ class UncertaintyOptions(MonodepthOptions):
                                  help="output directory for predicted depth and uncertainty maps")
         self.parser.add_argument("--qual", help="if set save colored depth and uncertainty maps", action="store_true")
 
-        ## additional gradient options 
+        # Monodepth2 supervised options
+        # possibility to load the uncertainty output without evaluating the log-likelihood
+        self.parser.add_argument("--uncert", help="if set will train with uncertainty output", action="store_true")
+
+        # gradient-based uncertainty options
         self.parser.add_argument("--grad", help="if set will calculate the gradients for uncertainty evaluation",
                                  action="store_true")
         self.parser.add_argument("--gloss", type=str, default="sq",
@@ -70,21 +74,22 @@ class UncertaintyOptions(MonodepthOptions):
                                       "ground truth (only for nyu) [gt], rotation [rot]", default='flip')
         self.parser.add_argument("--angle", help="angle in degree if rotation is used as reference", type=int,
                                  default=10)
-        self.parser.add_argument("--var_aug", help="use variance over multiple augmentations", action="store_true")
         self.parser.add_argument("--ext_layer", type=int, nargs="+", default=[6])
         self.parser.add_argument("--gred", type=str, default='max',
                                  help="method to reduce the gradients over the channels: [sum], [mean], [max], [norm]")
         self.parser.add_argument("--w", type=float, default=0.0, help="weighting of uncertainty loss term")
 
+        # inference only dropout options
         self.parser.add_argument("--infer_dropout", help="if set will apply dropout only during inference",
                                  action="store_true")
         self.parser.add_argument("--infer_p", type=float, default=0.2, help="infer dropout probability")
+        # variance over augmentations
+        self.parser.add_argument("--var_aug", help="use variance over multiple augmentations", action="store_true")
 
-        ##  additional options for supervised depth
+        #  additional options for supervised depth
         self.parser.add_argument("--save_depth_map", help="if set will save the detph maps", action="store_true")
         self.parser.add_argument("--save_uncert_map", help="if set will save the uncertainty maps", action="store_true")
         self.parser.add_argument("--save_error_map", help="if set will save the error maps", action="store_true")
-        self.parser.add_argument("--save_rgb", help="if set will save the rgb images", action="store_true")
 
     def parse(self):
         self.options = self.parser.parse_args()

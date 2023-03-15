@@ -7,6 +7,13 @@ This repository contains the official implementation of our  ECCV 2022 paper.
 ## Requirements
 We provide the `environment.yml` file with the required packages. The file ca be used to create an Anaconda environment. 
 
+Prepare monodepth2: 
+1. Download the `monodepth2` repository: [Monodepth2](https://github.com/nianticlabs/monodepth2)
+2. Replace `from kitti_utils import generate_depth_map` with `from ..kitti_utils import generate_depth_map` in the file `monodepth2/kitti_dataset.py` in `line 14`. 
+3. Replace `from layers import *` with `from ..layers import *` in the file `monodeth2/networks/depth_decoder.py` in `line 14`.
+4. Replace `class MonodepthOptions:` with `class MonodepthOptions(object):` in the file `monodepth2/options.py` in `line 15`.
+5. Add `import sys` and `sys.path.append("monodepth2")` to the file `monodepth2/trainer.py` before `from utils.py import *`.  
+
 ## Datasets
 We conduct our evaluations on the datasets [NYU Depth V2](https://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html) and [KITTI](http://www.cvlibs.net/datasets/kitti/raw_data.php). 
 [NYU Depth V2](https://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html) is downloaded as provided by [FastDepth](https://github.com/dwofk/fast-depth) into the folder `nyu_data`. [KITTI](http://www.cvlibs.net/datasets/kitti/raw_data.php) is downloaded according to the instructions from [mono-uncertainty](https://github.com/mattpoggi/mono-uncertainty) into the folder `kitti_data`.
@@ -18,7 +25,7 @@ In case of [KITTI](http://www.cvlibs.net/datasets/kitti/raw_data.php), we rely o
 Our models trained on [NYU Depth V2](https://cs.nyu.edu/~silberman/datasets/nyu_depth_v2.html) can be downloaded from the following link: [NYU Models](https://cloudstore.uni-ulm.de/s/CbWd7odXepC53Xr).
 The models can be trained with the following command: 
 ```
-python3 monodepth2/train.py --data_path nyu_data --width 288 --height 224 --max_depth 10 --dataset nyu  
+python3 train_supervised.py --data_path nyu_data --width 288 --height 224 --max_depth 10 --dataset nyu  
 ```
 To train the log-likelihood maximization model use the additional option `--uncert`. To train the MC Dropout model use the additional option `--dropout`.
 

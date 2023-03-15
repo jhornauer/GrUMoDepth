@@ -22,6 +22,11 @@
 # SOFTWARE.
 """
 Source: modified from https://github.com/mattpoggi/mono-uncertainty
+
+-- added gradient-based uncertainty (grad)
+-- added inference only dropout (infer_dropout)
+-- added variance over different augmentations (var_aug)
+
 """
 
 from __future__ import absolute_import, division, print_function
@@ -163,6 +168,7 @@ def evaluate(opt):
                                                          dropout=opt.dropout)
 
         if opt.infer_dropout:
+            # load separate depth deocder if dropout is onl applied during inference
             depth_decoder_drop = networks.DepthUncertaintyDecoder(encoder.num_ch_enc, num_output_channels=1,
                                                                   uncert=(opt.log or opt.repr or opt.uncert),
                                                                   dropout=opt.dropout, infer_dropout=opt.infer_dropout,
@@ -178,30 +184,22 @@ def evaluate(opt):
         depth_decoder.cuda()
         depth_decoder.eval()
 
+    # accumulators for depth and uncertainties
+    pred_disps = []
+    pred_uncerts = []
+
     if opt.grad:
         ext_layer = ['decoder.0.conv', 'decoder.1.conv', 'decoder.2.conv', 'decoder.3.conv', 'decoder.4.conv',
                      'decoder.5.conv', 'decoder.6.conv', 'decoder.7.conv', 'decoder.8.conv', 'decoder.9.conv',
                      'decoder.10.conv']
         layer_list = [ext_layer[layer_idx] for layer_idx in opt.ext_layer]
+        gradient_extractor = Gradient_Analysis(depth_decoder, layer_list, height, width, opt.gred)
+        print("-> Extract gradients from model for uncertainty estimation")
 
-        gradient_extractor = Gradient_Analysis(depth_decoder, layer_list, encoder_dict['height'],
-                                               encoder_dict['width'], opt.gred)
-
-    # accumulators for depth and uncertainties
-    pred_disps = []
-    pred_uncerts = []
-    rgb_imgs = []
-
-    print("-> Computing predictions with size {}x{}".format(width, height))
-
-    if opt.grad:
         bwd_time = 0
         n_samples = 0
-        if opt.gloss == "sq":
-            loss_fkt = squared_difference
-        elif opt.gloss in ["none", "var"]:
-            pass
-        else:
+
+        if opt.gloss not in ["sq", "none", "var"]:
             raise NotImplementedError
 
         for i, data in enumerate(dataloader):
@@ -222,14 +220,14 @@ def evaluate(opt):
                             transforms.functional.rotate(rgb_img, 10)]
                 ref_depths = []
                 with torch.no_grad():
-                    for i, input in enumerate(ref_imgs):
+                    for j, input in enumerate(ref_imgs):
                         output = depth_decoder(encoder(input))
                         ref_disp, _ = disp_to_depth(output[("disp", 0)], opt.min_depth, opt.max_depth)
-                        if i == 3:
+                        if j == 3:
                             ref_disp = transforms.functional.rotate(ref_disp, -10)
                         ref_disp = ref_disp.squeeze(1)
                         ref_depth = 1 / ref_disp
-                        if i == 0:
+                        if j == 0:
                             ref_depth = ref_depth.cpu().numpy()[:, :, ::-1]
                             ref_depth = torch.from_numpy(ref_depth.copy()).cuda()
                         ref_depths.append(ref_depth)
@@ -238,23 +236,18 @@ def evaluate(opt):
             pred_disp = pred_disp.squeeze(1)
             pred_depth = 1 / pred_disp
 
-            if opt.uncert:
-                pred_uncert = output[("uncert", 0)].squeeze(1)
-
             n_samples += rgb_img.shape[0]
-
-            # diff = loss_fkt(pred_depth, ref_depth)
-            # loss = torch.mean(diff)
 
             loss = 0
             if opt.gloss == "var":
                 loss = torch.var(torch.cat([pred_depth, ref_depths[0], ref_depths[1], ref_depths[2], ref_depths[3]], 0), dim=0)
                 loss = torch.mean(loss)
             else:
-                if opt.gloss != "none":
-                    depth_diff = loss_fkt(pred_depth, ref_depth)
+                if opt.gloss == "sq":
+                    depth_diff = squared_difference(pred_depth, ref_depth)
                     loss += torch.mean(depth_diff)
                 if opt.uncert and opt.w != 0.0:
+                    pred_uncert = output[("uncert", 0)].squeeze(1)
                     uncert = torch.exp(pred_uncert) ** 2
                     loss += (opt.w * torch.mean(uncert))
 
@@ -265,13 +258,14 @@ def evaluate(opt):
             bwd_time += (stop_time - start_time)
         pred_uncerts = gradient_extractor.get_gradients()
         bwd_time = bwd_time / len(dataloader)
-        print('Average backward time: {} ms'.format(bwd_time * 1000))
+        print('\nAverage backward time: {:.2f} ms'.format(bwd_time * 1000))
+
+    print("-> Computing predictions with size {}x{}".format(width, height))
 
     fwd_time = 0
     with torch.no_grad():
         bar = progressbar.ProgressBar(max_value=len(dataloader))
         for i, data in enumerate(dataloader):
-            rgb_imgs.append(np.transpose(data[("color", 0, 0)].cpu().numpy(), (0, 2, 3, 1)))
             input_color = data[("color", 0, 0)].cuda()
 
             # updating progress bar
@@ -309,10 +303,9 @@ def evaluate(opt):
 
                 # infer multiple predictions from multiple networks with dropout
                 disps_distribution = []
-                uncerts = []
 
                 # we infer 8 predictions as the number of bootstraps and snaphots
-                for i in range(8):
+                for j in range(8):
                     start_time = time.time()
                     output = depth_decoder(encoder(input_color))
                     stop_time = time.time()
@@ -334,10 +327,9 @@ def evaluate(opt):
 
                 # infer multiple predictions from multiple networks with dropout
                 disps_distribution = []
-                uncerts = []
 
                 # we infer 8 predictions as the number of bootstraps and snaphots
-                for i in range(8):
+                for j in range(8):
                     output = depth_decoder_drop(encoder(input_color))
                     disps_distribution.append(torch.unsqueeze(output[("disp", 0)], 0))
                 disps_distribution = torch.cat(disps_distribution, 0)
@@ -345,29 +337,30 @@ def evaluate(opt):
                 # uncertainty as variance of the predictions
                 pred_uncert = torch.var(disps_distribution, dim=0, keepdim=False).cpu()[0].numpy()
             elif opt.var_aug:
+                # variance over different augmentations
                 start_time = time.time()
                 disps_distribution = []
-                ## normal depth
+                # normal depth
                 output = depth_decoder(encoder(input_color))
                 disp_output = output[("disp", 0)]
                 pred_disp, _ = disp_to_depth(disp_output, opt.min_depth, opt.max_depth)
                 disps_distribution.append(torch.unsqueeze(disp_output, 0))
-                ## first augmentation
+                # first augmentation: flipping
                 rgb_input = torch.flip(input_color, [3])
                 output = depth_decoder(encoder(rgb_input))
                 disp_output = output[("disp", 0)]
                 disps_distribution.append(torch.unsqueeze(torch.flip(disp_output, [3]), 0))
-                ## second augmentation
+                # second augmentation: gray-scale
                 rgb_input = transforms.Grayscale(num_output_channels=3)(input_color)
                 output = depth_decoder(encoder(rgb_input))
                 disp_output = output[("disp", 0)]
                 disps_distribution.append(torch.unsqueeze(disp_output, 0))
-                ## third augmentation
+                # third augmentation: additive noise
                 rgb_input = input_color + torch.normal(0.0, 0.01, input_color.size()).cuda()
                 output = depth_decoder(encoder(rgb_input))
                 disp_output = output[("disp", 0)]
                 disps_distribution.append(torch.unsqueeze(disp_output, 0))
-                ## last augmentation
+                # last augmentation: rotation
                 rgb_input = transforms.functional.rotate(input_color, 10)
                 output = depth_decoder(encoder(rgb_input))
                 disp_output = output[("disp", 0)]
@@ -408,27 +401,12 @@ def evaluate(opt):
                 pred_uncert = (pred_uncert - np.min(pred_uncert)) / (np.max(pred_uncert) - np.min(pred_uncert))
                 pred_uncerts.append(pred_uncert)
     pred_disps = np.concatenate(pred_disps)
-    rgb_imgs = np.concatenate(rgb_imgs)
 
     fwd_time = fwd_time / len(dataset)
-    print('Average inference: {} ms'.format(fwd_time * 1000))
+    print('\nAverage inference: {:.2f} ms'.format(fwd_time * 1000))
 
     if do_uncert and not opt.grad:
         pred_uncerts = np.concatenate(pred_uncerts)
-
-    if opt.save_rgb:
-        # check if output directory exists
-        if not os.path.exists(opt.output_dir):
-            os.mkdir(opt.output_dir)
-        if not os.path.exists(os.path.join(opt.output_dir, "rgb")):
-            os.mkdir(os.path.join(opt.output_dir, "rgb"))
-
-        print("--> Saving rgb images")
-        bar = progressbar.ProgressBar(max_value=len(rgb_imgs))
-        for i in range(len(rgb_imgs)):
-            bar.update(i)
-            # save rgb images
-            plt.imsave(os.path.join(opt.output_dir, "rgb", '%06d_10.png' % i), rgb_imgs[i])
 
     # saving 16 bit depth and uncertainties
     print("-> Saving 16 bit maps")
@@ -443,15 +421,12 @@ def evaluate(opt):
         if opt.w != 0.0:
             folder_name = folder_name + "_weight" + str(opt.w)
         folder_name = folder_name + "_layer_" + "_".join(str(x) for x in opt.ext_layer)
-        if not os.path.exists(os.path.join(opt.output_dir, "raw", folder_name)):
-            os.makedirs(os.path.join(opt.output_dir, "raw", folder_name))
     elif opt.infer_dropout:
         folder_name = "uncert_p_" + str(opt.infer_p)
-        if not os.path.exists(os.path.join(opt.output_dir, "raw", folder_name)):
-            os.makedirs(os.path.join(opt.output_dir, "raw", folder_name))
     else:
-        if not os.path.exists(os.path.join(opt.output_dir, "raw", "uncert")):
-            os.makedirs(os.path.join(opt.output_dir, "raw", "uncert"))
+        folder_name = "uncert"
+    if not os.path.exists(os.path.join(opt.output_dir, "raw", folder_name)):
+        os.makedirs(os.path.join(opt.output_dir, "raw", folder_name))
 
     if opt.qual:
         if not os.path.exists(os.path.join(opt.output_dir, "qual", "disp")):
@@ -462,15 +437,12 @@ def evaluate(opt):
                 if opt.w != 0.0:
                     folder_name = folder_name + "_weight" + str(opt.w)
                 folder_name = folder_name + "_layer_" + "_".join(str(x) for x in opt.ext_layer)
-                if not os.path.exists(os.path.join(opt.output_dir, "qual", folder_name)):
-                    os.makedirs(os.path.join(opt.output_dir, "qual", folder_name))
             elif opt.infer_dropout:
                 folder_name = "uncert_p_" + str(opt.infer_p)
-                if not os.path.exists(os.path.join(opt.output_dir, "qual", folder_name)):
-                    os.makedirs(os.path.join(opt.output_dir, "qual", folder_name))
             else:
-                if not os.path.exists(os.path.join(opt.output_dir, "qual", "uncert")):
-                    os.makedirs(os.path.join(opt.output_dir, "qual", "uncert"))
+                folder_name = "uncert"
+            if not os.path.exists(os.path.join(opt.output_dir, "qual", folder_name)):
+                os.makedirs(os.path.join(opt.output_dir, "qual", folder_name))
 
     bar = progressbar.ProgressBar(max_value=len(pred_disps))
     for i in range(len(pred_disps)):
@@ -500,7 +472,7 @@ def evaluate(opt):
                 cv2.imwrite(os.path.join(opt.output_dir, "raw", folder_name, '%06d_10.png' % i),
                             (pred_uncerts[i] * (256 * 256 - 1)).astype(np.uint16))
             else:
-                cv2.imwrite(os.path.join(opt.output_dir, "raw", "uncert", '%06d_10.png' % i),
+                cv2.imwrite(os.path.join(opt.output_dir, "raw", folder_name, '%06d_10.png' % i),
                             (pred_uncerts[i] * (256 * 256 - 1)).astype(np.uint16))
 
         if opt.qual:
@@ -509,12 +481,8 @@ def evaluate(opt):
             plt.imsave(os.path.join(opt.output_dir, "qual", "disp", '%06d_10.png' % i), pred_disps[i], cmap='magma')
             if do_uncert:
                 # save colored uncertainty maps
-                if opt.grad or opt.infer_dropout:
-                    plt.imsave(os.path.join(opt.output_dir, "qual", folder_name, '%06d_10.png' % i), pred_uncerts[i],
-                               cmap='hot')
-                else:
-                    plt.imsave(os.path.join(opt.output_dir, "qual", "uncert", '%06d_10.png' % i), pred_uncerts[i],
-                               cmap='hot')
+                plt.imsave(os.path.join(opt.output_dir, "qual", folder_name, '%06d_10.png' % i), pred_uncerts[i],
+                           cmap='hot')
 
     # see you next time! 
     print("\n-> Done!")

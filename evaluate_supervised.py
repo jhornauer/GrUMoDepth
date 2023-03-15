@@ -4,13 +4,15 @@ import pickle
 from torch.utils.data import DataLoader
 
 from extended_options import *
-import monodepth2.datasets as datasets
+import datasets as datasets
 import monodepth2.networks as legacy
+import networks as networks
 import progressbar
 import matplotlib.pyplot as plt
 
 from gradients import *
 from torchvision import transforms
+from eval_utils import compute_eigen_errors, compute_eigen_errors_visu, compute_aucs
 
 import sys
 
@@ -18,130 +20,6 @@ uncertainty_metrics = ["abs_rel", "rmse", "a1"]
 
 
 splits_dir = os.path.join(os.path.dirname(__file__), "monodepth2/splits")
-
-
-def compute_eigen_errors_visu(gt, pred):
-    """Computation of error metrics between predicted and ground truth depths
-    """
-    mask_visu = gt > 0
-    gt[~mask_visu] = -1.
-    pred[~mask_visu] = -1.
-    thresh = np.maximum((gt / pred), (pred / gt))
-    a1 = (thresh < 1.25)
-    rmse = (gt - pred) ** 2
-    abs_rel = np.abs(gt - pred) / gt
-
-    return abs_rel, rmse, a1
-
-
-def compute_eigen_errors(gt, pred):
-    """Computation of error metrics between predicted and ground truth depths
-    """
-    thresh = np.maximum((gt / pred), (pred / gt))
-    a1 = (thresh < 1.25).mean()
-    a2 = (thresh < 1.25 ** 2).mean()
-    a3 = (thresh < 1.25 ** 3).mean()
-
-    rmse = (gt - pred) ** 2
-    rmse = np.sqrt(rmse.mean())
-
-    rmse_log = (np.log(gt) - np.log(pred)) ** 2
-    rmse_log = np.sqrt(rmse_log.mean())
-
-    abs_rel = np.mean(np.abs(gt - pred) / gt)
-
-    sq_rel = np.mean(((gt - pred) ** 2) / gt)
-
-    return abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3
-
-
-def compute_eigen_errors_v2(gt, pred, metrics=uncertainty_metrics, mask=None, reduce_mean=False):
-    """Revised compute_eigen_errors function used for uncertainty metrics, with optional reduce_mean argument and (1-a1) computation
-    """
-    results = []
-
-    if mask is not None:
-        pred = pred[mask]
-        gt = gt[mask]
-
-    if "abs_rel" in metrics:
-        abs_rel = (np.abs(gt - pred) / gt)
-        if reduce_mean:
-            abs_rel = abs_rel.mean()
-        results.append(abs_rel)
-
-    if "rmse" in metrics:
-        rmse = (gt - pred) ** 2
-        if reduce_mean:
-            rmse = np.sqrt(rmse.mean())
-        results.append(rmse)
-
-    if "a1" in metrics:
-        a1 = np.maximum((gt / pred), (pred / gt))
-        if reduce_mean:
-            # invert to get outliers
-            a1 = (a1 >= 1.25).mean()
-        results.append(a1)
-
-    return results
-
-
-def compute_aucs(gt, pred, uncert, intervals=50):
-    """Computation of auc metrics
-    """
-
-    # results dictionaries
-    AUSE = {"abs_rel": 0, "rmse": 0, "a1": 0}
-    AURG = {"abs_rel": 0, "rmse": 0, "a1": 0}
-
-    # revert order (high uncertainty first)
-    uncert = -uncert
-    true_uncert = compute_eigen_errors_v2(gt, pred)
-    true_uncert = {"abs_rel": -true_uncert[0], "rmse": -true_uncert[1], "a1": -true_uncert[2]}
-
-    # prepare subsets for sampling and for area computation
-    quants = [100. / intervals * t for t in range(0, intervals)]
-    plotx = [1. / intervals * t for t in range(0, intervals + 1)]
-
-    # get percentiles for sampling and corresponding subsets
-    thresholds = [np.percentile(uncert, q) for q in quants]
-    subs = [(uncert >= t) for t in thresholds]
-
-    # compute sparsification curves for each metric (add 0 for final sampling)
-    sparse_curve = {
-        m: [compute_eigen_errors_v2(gt, pred, metrics=[m], mask=sub, reduce_mean=True)[0] for sub in subs] + [0] for m
-        in uncertainty_metrics}
-
-    # human-readable call
-    '''
-    sparse_curve =  {"rmse":[compute_eigen_errors_v2(gt,pred,metrics=["rmse"],mask=sub,reduce_mean=True)[0] for sub in subs]+[0], 
-                     "a1":[compute_eigen_errors_v2(gt,pred,metrics=["a1"],mask=sub,reduce_mean=True)[0] for sub in subs]+[0],
-                     "abs_rel":[compute_eigen_errors_v2(gt,pred,metrics=["abs_rel"],mask=sub,reduce_mean=True)[0] for sub in subs]+[0]}
-    '''
-
-    # get percentiles for optimal sampling and corresponding subsets
-    opt_thresholds = {m: [np.percentile(true_uncert[m], q) for q in quants] for m in uncertainty_metrics}
-    opt_subs = {m: [(true_uncert[m] >= o) for o in opt_thresholds[m]] for m in uncertainty_metrics}
-
-    # compute sparsification curves for optimal sampling (add 0 for final sampling)
-    opt_curve = {m: [compute_eigen_errors_v2(gt, pred, metrics=[m], mask=opt_sub, reduce_mean=True)[0] for opt_sub in
-                     opt_subs[m]] + [0] for m in uncertainty_metrics}
-
-    # compute metrics for random sampling (equal for each sampling)
-    rnd_curve = {m: [compute_eigen_errors_v2(gt, pred, metrics=[m], mask=None, reduce_mean=True)[0] for t in
-                     range(intervals + 1)] for m in uncertainty_metrics}
-
-    # compute error and gain metrics
-    for m in uncertainty_metrics:
-        # error: subtract from method sparsification (first term) the oracle sparsification (second term)
-        AUSE[m] = np.trapz(sparse_curve[m], x=plotx) - np.trapz(opt_curve[m], x=plotx)
-
-        # gain: subtract from random sparsification (first term) the method sparsification (second term)
-        AURG[m] = rnd_curve[m][0] - np.trapz(sparse_curve[m], x=plotx)
-
-    # returns a dictionary with AUSE and AURG for each metric
-    return {m: [AUSE[m], AURG[m]] for m in uncertainty_metrics}, \
-           {m: [opt_curve[m], rnd_curve[m], sparse_curve[m]] for m in uncertainty_metrics}
 
 
 def batch_post_process_depth(l_depth, r_depth):
@@ -182,13 +60,14 @@ def evaluate(opt):
 
     # load a single encoder and decoder
     encoder = legacy.ResnetEncoder(opt.num_layers, False)
-    depth_decoder = legacy.DepthDecoder_Supervised(encoder.num_ch_enc, scales=opt.scales, dropout=opt.dropout,
-                                                   uncert=opt.uncert)
+    depth_decoder = networks.DepthUncertaintyDecoder_Supervised(encoder.num_ch_enc, scales=opt.scales,
+                                                                dropout=opt.dropout, uncert=opt.uncert)
 
     if opt.infer_dropout:
-        depth_decoder_drop = legacy.DepthDecoder_Supervised(encoder.num_ch_enc, scales=opt.scales, dropout=opt.dropout,
-                                                            uncert=opt.uncert, infer_dropout=opt.infer_dropout,
-                                                            infer_p=opt.infer_p)
+        depth_decoder_drop = networks.DepthUncertaintyDecoder_Supervised(encoder.num_ch_enc, scales=opt.scales,
+                                                                         dropout=opt.dropout, uncert=opt.uncert,
+                                                                         infer_dropout=opt.infer_dropout,
+                                                                         infer_p=opt.infer_p)
         depth_decoder_drop.load_state_dict(torch.load(decoder_path))
         depth_decoder_drop.cuda()
         depth_decoder_drop.eval()
@@ -201,6 +80,10 @@ def evaluate(opt):
     depth_decoder.cuda()
     depth_decoder.eval()
 
+    # accumulators for depth and uncertainties
+    pred_depths = []
+    pred_uncerts = []
+
     if opt.grad:
         ext_layer = ['decoder.0.conv', 'decoder.1.conv', 'decoder.2.conv', 'decoder.3.conv', 'decoder.4.conv',
                      'decoder.5.conv', 'decoder.6.conv', 'decoder.7.conv', 'decoder.8.conv', 'decoder.9.conv',
@@ -209,37 +92,23 @@ def evaluate(opt):
         gradient_extractor = Gradient_Analysis(depth_decoder, layer_list, encoder_dict['height'],
                                                encoder_dict['width'], opt.gred)
 
-    # accumulators for depth and uncertainties
-    pred_depths = []
-    pred_uncerts = []
-    rgb_imgs = []
+        print("-> Extract gradients from model for uncertainty estimation")
 
-    if opt.grad:
         bwd_time = 0
         n_samples = 0
 
-        # choose loss function type
-        if opt.gloss == "sq":
-            loss_fkt = squared_difference
-        elif opt.gloss in ["none", "var"]:
-            pass
-        else:
+        # check loss function type
+        if opt.gloss not in ["sq", "none", "var"]:
             raise NotImplementedError
 
-        # if reference is gray scale, define transform
-        if opt.gref == "gray":
-            transform = transforms.Grayscale(num_output_channels=3)
-        else:
-            pass
-
-        for i, data in enumerate(dataloader):
-            rgb_img = data[0].cuda()
-            gt_depth = data[1]
+        for i, inputs in enumerate(dataloader):
+            rgb_img = inputs[("color", 0, 0)].cuda()
+            gt_depth = inputs["depth_gt"]
 
             if opt.gref == "flip":
                 ref_img = torch.flip(rgb_img, [3])
             elif opt.gref == "gray":
-                ref_img = transform(rgb_img)
+                ref_img = transforms.Grayscale(num_output_channels=3)(rgb_img)
             elif opt.gref == "noise":
                 ref_img = rgb_img + torch.normal(0.0, 0.01, rgb_img.size()).cuda()
             elif opt.gref == "rot":
@@ -289,20 +158,20 @@ def evaluate(opt):
 
             output = gradient_extractor(encoder(rgb_img))
             pred_depth = output[("depth", 0)]
-            if opt.uncert:
-                pred_uncert = output[("uncert", 0)]
 
             n_samples += rgb_img.shape[0]
 
             loss = 0
             if opt.gloss == "var":
-                loss = torch.var(torch.cat([pred_depth, ref_depths[0], ref_depths[1], ref_depths[2], ref_depths[3]], 0), dim=0)
+                loss = torch.var(torch.cat([pred_depth, ref_depths[0], ref_depths[1], ref_depths[2], ref_depths[3]], 0),
+                                 dim=0)
                 loss = torch.mean(loss)
             else:
-                if opt.gloss != "none":
-                    depth_diff = loss_fkt(pred_depth, ref_depth)
+                if opt.gloss == "sq":
+                    depth_diff = squared_difference(pred_depth, ref_depth)
                     loss += torch.mean(depth_diff)
                 if opt.uncert and opt.w != 0.0:
+                    pred_uncert = output[("uncert", 0)]
                     uncert = torch.exp(pred_uncert) ** 2
                     loss += (opt.w * torch.mean(uncert))
 
@@ -313,7 +182,7 @@ def evaluate(opt):
 
         pred_uncerts = gradient_extractor.get_gradients()
         bwd_time = bwd_time / len(dataloader)
-        print('Average backward time: {} ms'.format(bwd_time * 1000))
+        print('\nAverage backward time: {:.2f} ms'.format(bwd_time * 1000))
 
     print("-> Computing predictions with size {}x{}".format(width, height))
 
@@ -321,7 +190,6 @@ def evaluate(opt):
     errors = []
     errors_abs_rel = []
     errors_rmse = []
-    errors_a1 = []
 
     # dictionary with accumulators for each metric
     aucs = {"abs_rel": [], "rmse": [], "a1": []}
@@ -329,16 +197,11 @@ def evaluate(opt):
 
     with torch.no_grad():
         bar = progressbar.ProgressBar(max_value=len(dataloader))
-        # for i, (rgb_img, gt_depth) in enumerate(dataloader):
-        for i, data in enumerate(dataloader):
-            rgb_img = data[0]
-            gt_depth = data[1]
+        for i, inputs in enumerate(dataloader):
+            rgb_img = inputs[("color", 0, 0)]
+            gt_depth = inputs["depth_gt"]
             gt_depth = gt_depth[:, 0].cpu().numpy()
-            rgb_imgs.append(np.transpose(rgb_img.cpu().numpy(), (0, 2, 3, 1)))
             rgb_img = rgb_img.cuda()
-            # gt_depth = gt_depth.cuda()
-            # gt_depth = gt_depth[:, 0].cpu().numpy()
-
             # updating progress bar
             bar.update(i)
             if opt.post_process:
@@ -349,7 +212,7 @@ def evaluate(opt):
                 # infer multiple predictions from multiple networks with dropout
                 depth_distribution = []
                 # we infer 8 predictions as the number of bootstraps and snaphots
-                for i in range(8):
+                for j in range(8):
                     start_time = time.time()
                     output = depth_decoder(encoder(rgb_img))
                     stop_time = time.time()
@@ -372,7 +235,7 @@ def evaluate(opt):
                 # infer multiple predictions from multiple networks with dropout
                 depth_distribution = []
                 # we infer 8 predictions as the number of bootstraps and snaphots
-                for i in range(8):
+                for j in range(8):
                     start_time = time.time()
                     output = depth_decoder_drop(encoder(rgb_img))
                     stop_time = time.time()
@@ -384,32 +247,30 @@ def evaluate(opt):
                 pred_uncert = (pred_uncert - np.min(pred_uncert)) / (np.max(pred_uncert) - np.min(pred_uncert))
                 pred_uncerts.append(pred_uncert)
 
-                # depth as mean of the predictions
-                #pred_depth = torch.mean(depth_distribution, dim=0, keepdim=False).cpu()[:, 0].numpy()
             elif opt.var_aug:
                 start_time = time.time()
                 depth_distribution = []
-                ## normal depth
+                # normal depth
                 output = depth_decoder(encoder(rgb_img))
                 depth_output = output[("depth", 0)]
                 pred_depth = depth_output[:, 0].cpu().numpy()
                 depth_distribution.append(torch.unsqueeze(depth_output, 0))
-                ## first augmentation
+                # first augmentation: flipping
                 rgb_input = torch.flip(rgb_img, [3])
                 output = depth_decoder(encoder(rgb_input))
                 depth_output = output[("depth", 0)]
                 depth_distribution.append(torch.unsqueeze(torch.flip(depth_output, [3]), 0))
-                ## second augmentation
+                # second augmentation: gray-scale
                 rgb_input = transforms.Grayscale(num_output_channels=3)(rgb_img)
                 output = depth_decoder(encoder(rgb_input))
                 depth_output = output[("depth", 0)]
                 depth_distribution.append(torch.unsqueeze(depth_output, 0))
-                ## third augmentation
+                # third augmentation: additive noise
                 rgb_input = rgb_img + torch.normal(0.0, 0.01, rgb_img.size()).cuda()
                 output = depth_decoder(encoder(rgb_input))
                 depth_output = output[("depth", 0)]
                 depth_distribution.append(torch.unsqueeze(depth_output, 0))
-                ## last augmentation
+                # last augmentation: rotation
                 rgb_input = transforms.functional.rotate(rgb_img, 10)
                 output = depth_decoder(encoder(rgb_input))
                 depth_output = output[("depth", 0)]
@@ -454,7 +315,6 @@ def evaluate(opt):
             tmp_abs_rel, tmp_rmse, tmp_a1 = compute_eigen_errors_visu(gt_depth, pred_depth)
             errors_abs_rel.append(tmp_abs_rel)
             errors_rmse.append(tmp_rmse)
-            errors_a1.append(tmp_a1)
 
             # apply masks
             pred_depth = pred_depth[mask]
@@ -479,17 +339,15 @@ def evaluate(opt):
                 [curves[m].append(spars_plots[m]) for m in uncertainty_metrics]
 
     fwd_time = fwd_time / len(dataset)
-    print('Average inference: {} ms'.format(fwd_time * 1000))
+    print('\nAverage inference: {:.2f} ms'.format(fwd_time * 1000))
 
     if type(pred_uncerts) == list:
         pred_uncerts = np.concatenate(pred_uncerts)
     pred_depths = np.concatenate(pred_depths)
-    rgb_imgs = np.concatenate(rgb_imgs)
 
     if opt.save_error_map:
         errors_abs_rel = np.concatenate(errors_abs_rel)
         errors_rmse = np.concatenate(errors_rmse)
-        errors_a1 = np.concatenate(errors_a1)
 
     # compute mean depth metrics and print
     mean_errors = np.array(errors).mean(0)
@@ -527,20 +385,6 @@ def evaluate(opt):
             plt.imsave(os.path.join(opt.output_dir, "depth", '%06d_10.png' % i), pred_depths[i],
                        cmap='magma_r')
 
-    if opt.save_rgb:
-        # check if output directory exists
-        if not os.path.exists(opt.output_dir):
-            os.mkdir(opt.output_dir)
-        if not os.path.exists(os.path.join(opt.output_dir, "rgb")):
-            os.mkdir(os.path.join(opt.output_dir, "rgb"))
-
-        print("--> Saving rgb images")
-        bar = progressbar.ProgressBar(max_value=len(rgb_imgs))
-        for i in range(len(rgb_imgs)):
-            bar.update(i)
-            # save rgb images
-            plt.imsave(os.path.join(opt.output_dir, "rgb", '%06d_10.png' % i), rgb_imgs[i])
-
     if opt.save_error_map:
         if not os.path.exists(opt.output_dir):
             os.mkdir(opt.output_dir)
@@ -566,13 +410,6 @@ def evaluate(opt):
             # save colored depth maps
             plt.imsave(os.path.join(opt.output_dir, "rmse", '%06d_10.png' % i), errors_rmse[i], cmap='hot')
 
-        print("--> Saving qualitative error maps: a1")
-        bar = progressbar.ProgressBar(max_value=len(errors_a1))
-        for i in range(len(errors_a1)):
-            bar.update(i)
-            # save colored depth maps
-            plt.imsave(os.path.join(opt.output_dir, "a1", '%06d_10.png' % i), errors_a1[i], cmap='hot')
-
     if opt.save_uncert_map:
         # check if output directory exists
         if not os.path.exists(opt.output_dir):
@@ -582,25 +419,19 @@ def evaluate(opt):
             if opt.w != 0.0:
                 folder_name = folder_name + "_weight" + str(opt.w)
             folder_name = folder_name + "_layer_" + "_".join(str(x) for x in opt.ext_layer)
-            if not os.path.exists(os.path.join(opt.output_dir, folder_name)):
-                os.makedirs(os.path.join(opt.output_dir, folder_name))
         elif opt.infer_dropout:
             folder_name = "uncert_p_" + str(opt.infer_p)
-            if not os.path.exists(os.path.join(opt.output_dir, folder_name)):
-                os.makedirs(os.path.join(opt.output_dir, folder_name))
         else:
-            if not os.path.exists(os.path.join(opt.output_dir, "uncert")):
-                os.makedirs(os.path.join(opt.output_dir, "uncert"))
+            folder_name = "uncert"
+        if not os.path.exists(os.path.join(opt.output_dir, folder_name)):
+            os.makedirs(os.path.join(opt.output_dir, folder_name))
 
         print("--> Saving qualitative uncertainty maps")
         bar = progressbar.ProgressBar(max_value=len(pred_uncerts))
         for i in range(len(pred_uncerts)):
             bar.update(i)
             # save colored uncertainty maps
-            if opt.grad or opt.infer_dropout:
-                plt.imsave(os.path.join(opt.output_dir, folder_name, '%06d_10.png' % i), pred_uncerts[i], cmap='hot')
-            else:
-                plt.imsave(os.path.join(opt.output_dir, "uncert", '%06d_10.png' % i), pred_uncerts[i], cmap='hot')
+            plt.imsave(os.path.join(opt.output_dir, folder_name, '%06d_10.png' % i), pred_uncerts[i], cmap='hot')
 
     # see you next time!
     print("\n-> Done!")
